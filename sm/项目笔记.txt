@@ -1,0 +1,180 @@
+一.项目的总体布局（三个moudle）
+sm :
+    父moudle : (pom.xml中)指定当前的项目信息，以及两个子moudle
+    全局定义与组织
+sm_web:  （pom.xml）指定其父moudle进行关联
+    表现层
+    Servlet依赖
+sm_service： （pom.xml）指定其父moudle进行关联
+    持久层、业务层
+    MyBatis依赖、Spring依赖
+**如果项目比较复杂，划分要更加细致，可以分层四个模块（实体模型，持久层，业务层，表现层)**
+
+1.sm中的配置（pom.xml）
+<properties>
+        <spring.version>4.0.2.RELEASE</spring.version>
+</properties>
+指定spring的版本信息，以便子moudle中进行引用
+
+2.sm_service中的配置（pom.xml）
+    <packaging>jar</packaging>  打包方式
+    配置maven的依赖
+    <!--mybatis-->
+        mysql-connector-java
+        mybatis
+    <!--Spring-->
+        spring-core
+        spring-beans
+        spring-context
+        spring-aop
+        aspectjweaver(aspectj:Aop的框架)
+    <!--事务-->
+        spring-jdbc
+        spring-tx(Spring的事务管理)
+        mybatis-spring（为了Spring和Mybatis整合）
+3.sm_web的配置（pom.xml）
+依赖：
+    sm_web会依赖于sm_service
+        <dependency>
+              <groupId>com.hairui</groupId>
+              <artifactId>sm_service</artifactId>
+              <version>1.0-SNAPSHOT</version>
+        </dependency>
+    <!--Servlet-->
+        <dependency>
+              <groupId>javax.servlet</groupId>
+              <artifactId>javax.servlet-api</artifactId>
+              <version>4.0.0</version>
+        </dependency>
+    <!--jstl-->
+        <dependency>
+          <groupId>jstl</groupId>
+          <artifactId>jstl</artifactId>
+          <version>1.2</version>
+        </dependency>
+
+二.项目结构
+1.sm_web
+    1>com.hairui.sm.controller
+
+    2>com.hairui.sm.global  (全局的处理：比如过滤器，是对全局进行处理)（需要在web.xml中进行配置）
+        a.编码过滤器
+        b.核心控制器，当用户向web容器发送请求的时候，web容器将这些请求全部交给核心控制器（是一个servlet），
+          这个servlet不做具体的请求处理，解析url判断用哪个控制器来处理，从IOC中将控制器拿出来，调用service
+          的功能
+          (1).解析url，得到IOC容器中对应的beanName和methodName，通过beanName在IOC中获取对应的对象，然后通过对象名
+            反射得到这个方法，然后去执行这个方法
+          (2).不能所有的请求都交给和核心控制器，要有一定规范的请求才交给核心控制器（比如以后缀名来规范'.do'）
+2.sm_service
+    1.entity   实体类
+    2.dao      实例化操作接口，持久化操作对象
+    3.service  业务处理的接口包
+    4.webapp   存放前端显示的内容
+        （如果放在WEB-INFO下面，通过url没法访问，具有一定安全性）
+
+三.配置文件
+    1.sm_service ---> resources ----> spring.xml(对spring的配置)
+        1>Spring整合Mybatis
+            a.数据源dataSource(数据库连接的四个属性)
+                <bean id="dataSource" class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+                        <property name="driverClassName" value="com.mysql.jdbc.Driver"/>
+                        <property name="url" value="jdbc:mysql://localhost/sm?useUnicode=true&amp;useSSL=false&amp;characterEncoding=utf-8"/>
+                        <property name="username" value="root"/>
+                        <property name="password" value="root"/>
+                </bean>
+            b.SqlSessionFactoryBean(mybatis需要，通过相关属性的注入来完成sqlSessionFactory的构造)
+                <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+                        <property name="dataSource" ref="dataSource"/>
+                        <!--指定别名，指定一个包，这个包里所有的类都可以以简称的方式调用-->
+                        <property name="typeAliasesPackage" value="com.hairui.sm.entity"/>
+
+                </bean>
+            c.mybatis的自动映射
+                <bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+                  <property name="basePackage" value="com.hairui.sm.dao"/>
+                  <!--在spring的IOC容器中间用sqlSessionFactoryBeanName标识-->
+                  <property name="sqlSessionFactoryBeanName" value="sqlSessionFactory"/>
+                </bean>
+            d.声明式事务
+                <!--1.需要依赖DataSource（上面已经配置过了）-->
+                <!--2.事务管理器-->
+                <bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+                    <property name="dataSource" ref="dataSource"/>
+                </bean>
+                <!--3.指定事务管理器具体的行为-->
+                <tx:advice id="txAdvice" transaction-manager="transactionManager">
+                    <tx:attributes>
+                        <!--设置成只读可以加快执行效率-->
+                        <tx:method name="get*" read-only="true"/>
+                        <tx:method name="find*" read-only="true"/>
+                        <tx:method name="search*" read-only="true"/>
+                        <!--如果不是上述方法，大多数是数据操作增删改等，强制他使用事务
+                        当一个业务方法被调用时，先检查是不是包含在一个事务里，如果包含在
+                        事务里，就依赖其事务，如果没有包含，就会以一个事务对其进行封装-->
+                        <tx:method name="*" propagation="REQUIRED"/>
+                    </tx:attributes>
+                </tx:advice>
+            e.植入
+                <aop:config>
+                    <!--pointcut：切入点，expression：表达式-->
+                    <aop:pointcut id="txPointcut" expression="execution(* com.hairui.sm.service.*.*(..))"/>
+                    <!--关联切入点和通知-->
+                    <aop:advisor advice-ref="txAdvice" pointcut-ref="txPointcut"/>
+                </aop:config>
+
+            d.全局扫描(利用注解去自动构造bean)
+                <context:component-scan base-package="com.hairui.sm"/>
+
+                <aop:aspectj-autoproxy/><!--aspectj的自动代理-->
+
+四.各项功能的实现步骤
+    1.实体类
+    2.Dao接口与Sql映射文件
+        resource中要创建和Dao层包路径相同的资源文件夹路径，才能匹配
+        比如com.hairui.sm.dao对应com/hairui/sm/dao
+    3.Service接口与其实现类
+    4.控制器
+    5.页面
+
+五.知识点
+    1.处理对象与对象多对一关系，例如department会包含多个staff（staff中的did对应department中的id）
+        处理方法：在员工实例类中添加部门对象：private Department department;
+                映射文件中间需要在结果集resultMap中配置一个属性：（配置多对一关联）
+        <association property="department" column="did" javaType="Department" select="com.hairui.sm.dao.DepartmentDao.selectById" />
+        在员工对象中需要得到部门信息的内容：staff.department.属性名
+    2.将从页面request.getParameter接收到的时间为String字符串，将其转换为util的date
+        java.util.Date bornDate = new SimpleDateFormat("yyyy-MM-dd").parse(request.getParameter("bornDate"));
+    3.Hidden 对象是表示 HTML 表单中的某个隐藏输入域。
+        <input name="id" type="hidden" value="${OBJ.id}">
+    4.对时间进行格式化显示：
+        格式化标签：<%@taglib prefix="fmt" uri="http://java.sun.com/jsp/jstl/fmt" %>
+        <fmt:formatDate value="${staff.workTime}" pattern="yyyy-MM-dd HH:mm"/>
+    5.在对员工信息进行添加的时候，部门只能选择已有部门，在servlet中获取对应的部门信息，传到显示页面，以下拉列表进行显示
+        jstl的标签库<%@taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %>
+        <span class="title">部门：</span>
+        <div class="li_r">
+            <select name="did">
+                <c:forEach items="${DLIST}" var="dep">
+                <!--value设置部门编号，显示的为部门名称-->
+                <option value="${dep.id}">${dep.name}</option>
+                </c:forEach>
+            </select>
+            <i>*</i>
+        </div>
+    6.单选框的默认选中属性:checked="checked"
+    7.设置下拉列表默认选项
+    <select name="did">
+        <c:forEach items="${DLIST}" var="dep">
+            <!--将员工所属部门设置为默认选项-->
+            <c:if test="${OBJ.did==dep.id}">
+            <option value="${dep.id}" selected="selected">${dep.name}</option>
+            </c:if>
+            <c:if test="${OBJ.did!=dep.id}">
+                <option value="${dep.id}">${dep.name}</option>
+            </c:if>
+        </c:forEach>
+    </select>
+    8.在验证登陆得时候根据传入的用户名进行查找，根据对象.password验证，不要去拼接sql
+
+    9.日志模块。
+

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.4//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hairui.sm.dao.DepartmentDao">
+    <!--type="Department"用的是简称，因为在sqlSessionFactory中配置了实体类的路径-->
+    <resultMap id="resultMap" type="Department">
+        <!--主键用id标签-->
+        <id property="id" column="id" javaType="Integer"/>
+        <result property="name" column="name" javaType="String"/>
+        <result property="address" column="address" javaType="String"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="Department" useGeneratedKeys="true">
+        insert into department(name,address) values(#{name},#{address})
+    </insert>
+    <delete id="delete" parameterType="Integer">
+        delete from department where id=#{id}
+    </delete>
+    <update id="update" parameterType="Department">
+        update department set name=#{name},address=#{address} where id=#{id}
+    </update>
+    <select id="selectById" parameterType="Integer" resultMap="resultMap">
+        select * from department where id=#{id}
+    </select>
+    <select id="selectAll" resultMap="resultMap">
+        select * from department
+    </select>
+</mapper>
